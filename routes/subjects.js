@@ -1,8 +1,9 @@
 const express = require("express");
 const router = express.Router();
 const subjectController = require("../controllers/subjectController");
+const { authenticate } = require("../middleware/authMiddleware");
 
-router.post("/create", subjectController.createSubjects);
+router.post("/create", authenticate, subjectController.createSubjects);
+router.get("/", authenticate, subjectController.getSubjects); // New route to fetch subjects
 
-router.get("/", subjectController.getSubjects);
 module.exports = router;

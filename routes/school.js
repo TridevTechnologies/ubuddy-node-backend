@@ -1,12 +1,10 @@
-const express = require("express");
-const { authenticate } = require("../middleware/authMiddleware"); // Import the authenticate middleware
+const express = require('express');
+const { createSchool } = require('../controllers/schoolController');
+const { authenticate } = require('../middleware/authMiddleware');
+const {getAllSchools} = require('../controllers/schoolController');
 const router = express.Router();
-const subjectController = require("../controllers/subjectController");
 
-// Post route to create subjects
-router.post("/create", authenticate, subjectController.createSubjects);
-
-// Get route to fetch subjects
-router.get("/", authenticate, subjectController.getSubjects);
+router.post('/create', authenticate, createSchool); // Super Admin Creates School
+router.get('/all', authenticate, getAllSchools);
 
 module.exports = router;
