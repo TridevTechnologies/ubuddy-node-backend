@@ -268,3 +268,81 @@ exports.updateStudentBankDetails = async (req, res) => {
         res.status(500).json({ message: "Internal server error" });
     }
 };
+exports.getFullStudentDetails = async (req, res) => {
+    // Get school_code from the JWT (req.user)
+    const { school_code } = req.user;
+    if (!school_code) {
+      return res.status(403).json({ message: "Unauthorized: School code missing in token" });
+    }
+  
+    // Get the student_id from route parameters (e.g., GET /students/full/:id)
+    const { id } = req.params;
+  
+    try {
+      // Get basic student details from the 'students' table
+      const studentQuery = `
+        SELECT * FROM students
+        WHERE student_id = $1 AND school_code = $2
+      `;
+      const studentResult = await pool.query(studentQuery, [id, school_code]);
+      if (studentResult.rows.length === 0) {
+        return res.status(404).json({ message: "Student not found" });
+      }
+  
+      // Get enrollment details from the 'student_enrollments' table
+      const enrollmentQuery = `
+        SELECT * FROM student_enrollments
+        WHERE student_id = $1
+      `;
+      const enrollmentResult = await pool.query(enrollmentQuery, [id]);
+  
+      // Get family details from the 'family_details' table
+      const familyQuery = `
+        SELECT * FROM family_details
+        WHERE student_id = $1
+      `;
+      const familyResult = await pool.query(familyQuery, [id]);
+  
+      // Get bank details from the 'bank_details' table
+      const bankQuery = `
+        SELECT * FROM bank_details
+        WHERE student_id = $1
+      `;
+      const bankResult = await pool.query(bankQuery, [id]);
+  
+      // Combine all details into one response object
+      const fullDetails = {
+        student: studentResult.rows[0],
+        enrollment: enrollmentResult.rows, // In case there is more than one enrollment record
+        family_details: familyResult.rows,   // Array of family members
+        bank_details: bankResult.rows.length > 0 ? bankResult.rows[0] : null,
+      };
+  
+      return res.status(200).json({ student: fullDetails });
+    } catch (error) {
+      console.error("Error fetching full student details:", error);
+      return res.status(500).json({ message: "Internal server error", error: error.message });
+    }
+  };
+  exports.getAllStudents = async (req, res) => {
+    // Get school_code from the JWT (req.user)
+    const { school_code } = req.user;
+    if (!school_code) {
+      return res.status(403).json({ message: "Unauthorized: School code missing in token" });
+    }
+  
+    try {
+      const query = `
+        SELECT student_id, first_name, last_name, gender, primary_contact 
+        FROM students 
+        WHERE school_code = $1
+      `;
+      const result = await pool.query(query, [school_code]);
+  
+      // Return the list of students (even if empty)
+      res.status(200).json({ students: result.rows });
+    } catch (error) {
+      console.error("Error fetching students:", error);
+      res.status(500).json({ message: "Internal server error", error: error.message });
+    }
+  };

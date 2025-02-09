@@ -6,7 +6,10 @@ const {
     updateStudentStatus,
     editStudent,
     updateStudentEnrollment,
-    updateStudentBankDetails
+    updateStudentBankDetails,
+    getAllStudents,
+    getFullStudentDetails,
+    
 } = require("../controllers/studentController");
 
 // Route to create a student (requires authentication)
@@ -23,5 +26,9 @@ router.patch("/:id/enrollment", authenticate, updateStudentEnrollment);
 
 // Route to update student bank details (requires authentication)
 router.patch("/:id/bank-details", authenticate, updateStudentBankDetails);
+
+router.get("/:id", authenticate, getFullStudentDetails);
+
+router.get("/", authenticate, getAllStudents);
 
 module.exports = router;
