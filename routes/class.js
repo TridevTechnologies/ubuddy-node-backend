@@ -8,7 +8,7 @@ const router = express.Router();
 router.post('/create', authenticate, createClass);
 
 // Get route to fetch classes for a particular school
-router.get('/all', authenticate, getClasses);
+router.post('/all', authenticate, getClasses);
 
 module.exports = router;
  
