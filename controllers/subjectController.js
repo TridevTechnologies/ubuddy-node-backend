@@ -40,3 +40,37 @@ exports.createSubjects = async (req, res) => {
         res.status(500).json({ message: "Internal server error" });
     }
 };
+
+
+exports.getSubjects = async (req, res) => {
+    try {
+        const { role, school_code: userSchoolCode } = req.user; // Extract from JWT
+        const { school_code } = req.query; // Accept school_code as a query param
+
+        let finalSchoolCode;
+
+        if (role === "super_admin") {
+            if (!school_code) {
+                return res.status(400).json({ message: "Super Admin must provide a school_code" });
+            }
+            finalSchoolCode = school_code;
+        } else {
+            if (school_code && school_code !== userSchoolCode) {
+                return res.status(403).json({ message: "Unauthorized: Mismatched school code" });
+            }
+            finalSchoolCode = userSchoolCode;
+        }
+
+        if (!finalSchoolCode) {
+            return res.status(400).json({ message: "Invalid school_code" });
+        }
+
+        const query = `SELECT id, name, code FROM subjects WHERE school_code = $1;`;
+        const { rows } = await db.query(query, [finalSchoolCode]);
+
+        res.status(200).json({ message: "Subjects fetched successfully", subjects: rows });
+    } catch (error) {
+        console.error("Error fetching subjects:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+};

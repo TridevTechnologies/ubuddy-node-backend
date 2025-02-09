@@ -1,4 +1,3 @@
-// app.js
 const express = require('express');
 const app = express();
 require('dotenv').config();
@@ -12,7 +11,7 @@ const classRoutes = require('./routes/class'); // Create and get classes
 const classSubjectRoutes = require('./routes/classSubject'); // Allocate subjects to classes
 const schoolRoutes = require('./routes/school'); // Create school and get all schools
 const studentRoutes = require('./routes/student'); // Student-related routes
-const subjectRoutes = require('./routes/subject'); // Create subjects for a school
+const subjectRoutes = require('./routes/subjects'); // Create subjects for a school
 
 // Mount routes with base paths
 app.use('/api/auth', authRoutes);
@@ -33,8 +32,4 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Internal Server Error' });
 });
 
-// Start the server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+module.exports = app; // Export app without starting the server

@@ -11,3 +11,4 @@ router.post('/create', authenticate, createClass);
 router.get('/all', authenticate, getClasses);
 
 module.exports = router;
+ 
