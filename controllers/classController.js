@@ -15,8 +15,8 @@ exports.createClass = async (req, res) => {
     try {
         // Verify session exists
         const sessionCheck = await client.query(
-            'SELECT id FROM sessions WHERE id = $1 AND school_code = $2',
-            [session_id, school_code]
+            'SELECT id FROM sessions WHERE id = $1 ',
+            [session_id]
         );
         
         if (sessionCheck.rows.length === 0) {
