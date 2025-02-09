@@ -29,9 +29,9 @@ exports.createClass = async (req, res) => {
     }
 };
 
-// Function to get all classes for a particular school
 exports.getClasses = async (req, res) => {
-    const { role, school_code: userSchoolCode, session_id } = req.user; // Extract session_id from JWT
+    const { role, school_code: userSchoolCode } = req.user; // Extract school_code from JWT
+    const { session_id } = req.body; // Extract session_id from the request body
 
     // Get school_code from JWT for school admins or from request query for super admins
     const finalSchoolCode = role === 'super_admin' ? req.query.school_code : userSchoolCode;
