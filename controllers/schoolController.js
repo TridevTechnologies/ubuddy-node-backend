@@ -57,3 +57,28 @@ exports.createSchool = async (req, res) => {
         client.release();
     }
 };
+exports.getAllSchools = async (req, res) => {
+    const { role } = req.user; // Extract user role from JWT
+
+    if (role !== "super_admin") {
+        return res.status(403).json({ message: "Unauthorized: Only Super Admin can access this data" });
+    }
+
+    const client = await pool.connect();
+
+    try {
+        const query = `SELECT school_name, school_code, board, medium, contact_number, email, city, state, website FROM schools`;
+        const result = await client.query(query);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: "No schools found" });
+        }
+
+        res.status(200).json({ schools: result.rows });
+    } catch (error) {
+        console.error("Error fetching schools:", error);
+        res.status(500).json({ message: "Server error", error: error.message });
+    } finally {
+        client.release();
+    }
+};
