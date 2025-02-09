@@ -31,27 +31,27 @@ exports.createClass = async (req, res) => {
 
 // Function to get all classes for a particular school
 exports.getClasses = async (req, res) => {
-    const { role, school_code: userSchoolCode } = req.user; // Extract from JWT
+    const { role, school_code: userSchoolCode, session_id } = req.user; // Extract session_id from JWT
 
-    // Get school code either from the JWT token (for school admins) or from the request (for super admins)
+    // Get school_code from JWT for school admins or from request query for super admins
     const finalSchoolCode = role === 'super_admin' ? req.query.school_code : userSchoolCode;
 
-    if (!finalSchoolCode) {
-        return res.status(403).json({ message: 'Unauthorized: School code required to fetch classes' });
+    if (!finalSchoolCode || !session_id) {
+        return res.status(403).json({ message: 'Unauthorized: School code and session ID required to fetch classes' });
     }
 
     const client = await pool.connect();
     try {
-        // Query to get all classes for the specific school
+        // Query to get all classes for the specific school and session
         const result = await client.query(
             `SELECT id, session_id, name, promote_to 
              FROM classes 
-             WHERE school_code = $1`,
-            [finalSchoolCode]
+             WHERE school_code = $1 AND session_id = $2`,
+            [finalSchoolCode, session_id]
         );
 
         if (result.rows.length === 0) {
-            return res.status(404).json({ message: 'No classes found for this school' });
+            return res.status(404).json({ message: 'No classes found for this school in the given session' });
         }
 
         res.status(200).json({ classes: result.rows });
