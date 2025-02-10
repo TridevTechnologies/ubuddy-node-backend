@@ -561,3 +561,62 @@ exports.getRollNumber = async (req, res) => {
         client.release(); // Ensure client release
     }
 };
+
+// controllers/studentAdditionalSubjects.js
+exports.getNonCompulsorySubjects = async (req, res) => {
+    const client = await pool.connect();
+    try {
+      const { class_id } = req.query;
+      if (!class_id) {
+        return res.status(400).json({ message: "class_id is required" });
+      }
+      const query = `
+        SELECT s.id, s.name, s.code
+        FROM class_subjects cs
+        JOIN subjects s ON cs.subject_id = s.id
+        WHERE cs.class_id = $1 
+          AND cs.is_compulsory = false
+      `;
+      const result = await client.query(query, [class_id]);
+      res.status(200).json({ subjects: result.rows });
+    } catch (error) {
+      console.error("Error fetching non-compulsory subjects:", error);
+      res.status(500).json({ message: "Internal server error", error: error.message });
+    } finally {
+      client.release();
+    }
+  };
+
+  exports.assignAdditionalSubject = async (req, res) => {
+    const client = await pool.connect();
+    try {
+      const { student_id, subject_id } = req.body;
+      if (!student_id || !subject_id) {
+        return res.status(400).json({ message: "student_id and subject_id are required" });
+      }
+      
+      // Check if this subject is already assigned to the student
+      const checkQuery = `
+        SELECT * FROM student_additional_subjects
+        WHERE student_id = $1 AND subject_id = $2
+      `;
+      const checkResult = await client.query(checkQuery, [student_id, subject_id]);
+      if (checkResult.rowCount > 0) {
+        return res.status(400).json({ message: "Subject already assigned to this student" });
+      }
+  
+      const insertQuery = `
+        INSERT INTO student_additional_subjects (student_id, subject_id)
+        VALUES ($1, $2)
+        RETURNING id
+      `;
+      const insertResult = await client.query(insertQuery, [student_id, subject_id]);
+      res.status(201).json({ message: "Additional subject assigned", id: insertResult.rows[0].id });
+    } catch (error) {
+      console.error("Error assigning additional subject:", error);
+      res.status(500).json({ message: "Internal server error", error: error.message });
+    } finally {
+      client.release();
+    }
+  };
+  

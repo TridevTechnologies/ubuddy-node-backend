@@ -15,6 +15,8 @@ const {
     getSection,
     updateSection,
     getAllEnrolledStudents,
+    getNonCompulsorySubjects,
+    assignAdditionalSubject,
     
 } = require("../controllers/studentController");
 
@@ -50,6 +52,7 @@ router.get("/section", authenticate , getSection);
 router.put("/section/update", authenticate , updateSection);
 
 
-
+router.get("/non-compulsory-subjects", authenticate, getNonCompulsorySubjects);
+router.post("/assign-additional-subject", authenticate, assignAdditionalSubject);
 module.exports = router;
 
