@@ -598,9 +598,9 @@ exports.assignAdditionalSubject = async (req, res) => {
       
       // Check if the student already has an additional subject assigned
       const checkQuery = `
-        SELECT * FROM student_additional_subjects
-        WHERE student_id = $1
-      `;
+      SELECT * FROM student_additional_subjects
+      WHERE student_id = $1 AND subject_id = $2
+    `;
       const checkResult = await client.query(checkQuery, [student_id]);
       if (checkResult.rowCount > 0) {
         return res.status(400).json({ message: "Additional subject already assigned. Unassign it before assigning a new one." });
