@@ -591,27 +591,27 @@ exports.getNonCompulsorySubjects = async (req, res) => {
   exports.assignAdditionalSubject = async (req, res) => {
     const client = await pool.connect();
     try {
-      const { student_id, subject_id } = req.body;
-      if (!student_id || !subject_id) {
-        return res.status(400).json({ message: "student_id and subject_id are required" });
+      const { student_id, class_id, subject_id } = req.body;
+      if (!student_id || !class_id || !subject_id) {
+        return res.status(400).json({ message: "student_id, class_id, and subject_id are required" });
       }
       
-      // Check if this subject is already assigned to the student
+      // Check if this subject is already assigned to the student for that class
       const checkQuery = `
         SELECT * FROM student_additional_subjects
-        WHERE student_id = $1 AND subject_id = $2
+        WHERE student_id = $1 AND class_id = $2 AND subject_id = $3
       `;
-      const checkResult = await client.query(checkQuery, [student_id, subject_id]);
+      const checkResult = await client.query(checkQuery, [student_id, class_id, subject_id]);
       if (checkResult.rowCount > 0) {
         return res.status(400).json({ message: "Subject already assigned to this student" });
       }
-  
+      
       const insertQuery = `
-        INSERT INTO student_additional_subjects (student_id, subject_id)
-        VALUES ($1, $2)
+        INSERT INTO student_additional_subjects (student_id, class_id, subject_id)
+        VALUES ($1, $2, $3)
         RETURNING id
       `;
-      const insertResult = await client.query(insertQuery, [student_id, subject_id]);
+      const insertResult = await client.query(insertQuery, [student_id, class_id, subject_id]);
       res.status(201).json({ message: "Additional subject assigned", id: insertResult.rows[0].id });
     } catch (error) {
       console.error("Error assigning additional subject:", error);
