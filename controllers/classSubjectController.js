@@ -99,7 +99,7 @@ exports.getClassSubjects = async (req, res) => {
 
             // 📌 Fetch assigned subjects
             const { rows } = await client.query(
-                `SELECT cs.id, cs.class_id, cs.subject_id, s.name AS subject_name, 
+                `SELECT cs.id, cs.class_id, cs.subject_id, 
                         cs.is_compulsory, cs.is_result_subject, cs.is_daily_schedule, cs.is_timetable 
                  FROM class_subjects cs
                  JOIN subjects s ON cs.subject_id = s.id
