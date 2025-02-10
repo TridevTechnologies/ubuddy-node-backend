@@ -540,7 +540,7 @@ exports.getRollNumber = async (req, res) => {
                 s.last_name,
                 s.status,
                 se.roll_number,
-                c.name AS class_name
+                c.name AS class_name,
                 se.class_id
             FROM student_enrollments se
             JOIN students s ON se.student_id = s.student_id
