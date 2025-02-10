@@ -17,10 +17,11 @@ const {
     getAllEnrolledStudents,
     getNonCompulsorySubjects,
     assignAdditionalSubject,
+    unassignAdditionalSubject,
 } = require("../controllers/studentController");
 
 const { getClasses } = require("../controllers/classController");
-
+router.delete("/unassign-additional-subject", authenticate, unassignAdditionalSubject);
 // Static Routes (Put these first)
 router.get("/class", authenticate , getClasses);
 router.put("/class/update", authenticate , updateClass);
