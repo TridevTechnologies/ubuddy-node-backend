@@ -333,7 +333,7 @@ exports.getFullStudentDetails = async (req, res) => {
   
     try {
       const query = `
-        SELECT student_id, first_name, last_name, gender, primary_contact , 
+        SELECT student_id, first_name, last_name, gender, primary_contact 
         FROM students 
         WHERE school_code = $1
       `;
