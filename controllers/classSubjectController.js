@@ -1,4 +1,6 @@
 // controllers/classSubjectController.js
+const db = require("../config/db"); // Ensure correct path
+
 exports.createClassSubjects = async (req, res) => {
     try {
         // ... existing validation code ...
