@@ -346,3 +346,180 @@ exports.getFullStudentDetails = async (req, res) => {
       res.status(500).json({ message: "Internal server error", error: error.message });
     }
   };
+  // Fetch the currently assigned roll number for a student
+exports.getRollNumber = async (req, res) => {
+    const client = await pool.connect();
+    try {
+      const { student_id } = req.params; // e.g., GET /api/student-enrollments/:student_id/roll-number
+      const query = 'SELECT roll_number FROM student_enrollments WHERE student_id = $1';
+      const result = await client.query(query, [student_id]);
+      if (result.rowCount === 0) {
+        return res.status(404).json({ message: 'Enrollment not found for this student' });
+      }
+      res.status(200).json({ roll_number: result.rows[0].roll_number });
+    } catch (error) {
+      console.error("Error fetching roll number:", error);
+      res.status(500).json({ message: 'Internal server error', error: error.message });
+    } finally {
+      client.release();
+    }
+  };
+  
+  // Update (or assign) the roll number for a student
+  exports.updateRollNumber = async (req, res) => {
+    const client = await pool.connect();
+    try {
+      const { student_id } = req.params; // e.g., PUT /api/student-enrollments/:student_id/roll-number
+      const { roll_number } = req.body;
+      if (!roll_number) {
+        return res.status(400).json({ message: 'Roll number is required' });
+      }
+      await client.query('BEGIN');
+      // Check if the enrollment record exists
+      const selectQuery = 'SELECT roll_number FROM student_enrollments WHERE student_id = $1';
+      const selectResult = await client.query(selectQuery, [student_id]);
+      if (selectResult.rowCount === 0) {
+        return res.status(404).json({ message: 'Enrollment not found for this student' });
+      }
+      // Update the roll number regardless of its previous value
+      const updateQuery = 'UPDATE student_enrollments SET roll_number = $1 WHERE student_id = $2';
+      await client.query(updateQuery, [roll_number, student_id]);
+      await client.query('COMMIT');
+      res.status(200).json({ message: 'Roll number updated successfully', roll_number });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error("Error updating roll number:", error);
+      res.status(500).json({ message: 'Internal server error', error: error.message });
+    } finally {
+      client.release();
+    }
+  };
+
+  exports.updateClass = async (req, res) => {
+    const client = await pool.connect();
+    try {
+      const { student_id } = req.params; // e.g., PUT /api/student-enrollments/:student_id/class
+      const { class_id } = req.body;
+      if (!class_id) {
+        return res.status(400).json({ message: 'Class ID is required' });
+      }
+      await client.query('BEGIN');
+      const selectQuery = 'SELECT class_id FROM student_enrollments WHERE student_id = $1';
+      const selectResult = await client.query(selectQuery, [student_id]);
+      if (selectResult.rowCount === 0) {
+        return res.status(404).json({ message: 'Enrollment not found for this student' });
+      }
+      const updateQuery = 'UPDATE student_enrollments SET class_id = $1 WHERE student_id = $2';
+      await client.query(updateQuery, [class_id, student_id]);
+      await client.query('COMMIT');
+      res.status(200).json({ message: 'Class updated successfully', class_id });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error("Error updating class:", error);
+      res.status(500).json({ message: 'Internal server error', error: error.message });
+    } finally {
+      client.release();
+    }
+  };
+
+  exports.getClass = async (req, res) => {
+    const client = await pool.connect();
+    try {
+      const { student_id } = req.params; // e.g., GET /api/student-enrollments/:student_id/class
+  
+      // First, get the class_id for the student from the enrollment record
+      const enrollmentQuery = 'SELECT class_id FROM student_enrollments WHERE student_id = $1';
+      const enrollmentResult = await client.query(enrollmentQuery, [student_id]);
+      if (enrollmentResult.rowCount === 0) {
+        return res.status(404).json({ message: 'Enrollment not found for this student' });
+      }
+  
+      const class_id = enrollmentResult.rows[0].class_id;
+      
+      // If there is no class assigned, return accordingly
+      if (!class_id) {
+        return res.status(200).json({ message: 'No class assigned', class_id: null, class_name: null });
+      }
+  
+      // Now, retrieve the class name from the classes table using the class_id
+      const classQuery = 'SELECT name FROM classes WHERE id = $1';
+      const classResult = await client.query(classQuery, [class_id]);
+      if (classResult.rowCount === 0) {
+        return res.status(404).json({ message: 'Class not found for the given class_id' });
+      }
+  
+      const class_name = classResult.rows[0].name;
+  
+      res.status(200).json({ class_id, class_name });
+    } catch (error) {
+      console.error("Error fetching class:", error);
+      res.status(500).json({ message: 'Internal server error', error: error.message });
+    } finally {
+      client.release();
+    }
+  };
+
+  exports.updateSection = async (req, res) => {
+    const client = await pool.connect();
+    try {
+      const { student_id } = req.params; // e.g., PUT /api/student-enrollments/:student_id/section
+      const { section_id } = req.body;
+      if (!section_id) {
+        return res.status(400).json({ message: 'Section ID is required' });
+      }
+      await client.query('BEGIN');
+      const selectQuery = 'SELECT section_id FROM student_enrollments WHERE student_id = $1';
+      const selectResult = await client.query(selectQuery, [student_id]);
+      if (selectResult.rowCount === 0) {
+        return res.status(404).json({ message: 'Enrollment not found for this student' });
+      }
+      const updateQuery = 'UPDATE student_enrollments SET section_id = $1 WHERE student_id = $2';
+      await client.query(updateQuery, [section_id, student_id]);
+      await client.query('COMMIT');
+      res.status(200).json({ message: 'Section updated successfully', section_id });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error("Error updating section:", error);
+      res.status(500).json({ message: 'Internal server error', error: error.message });
+    } finally {
+      client.release();
+    }
+  };
+
+  exports.getSection = async (req, res) => {
+    const client = await pool.connect();
+    try {
+      const { student_id } = req.params; // e.g., GET /api/student-enrollments/:student_id/section
+  
+      // First, get the section_id for the student from the enrollment record
+      const enrollmentQuery = 'SELECT section_id FROM student_enrollments WHERE student_id = $1';
+      const enrollmentResult = await client.query(enrollmentQuery, [student_id]);
+      if (enrollmentResult.rowCount === 0) {
+        return res.status(404).json({ message: 'Enrollment not found for this student' });
+      }
+  
+      const section_id = enrollmentResult.rows[0].section_id;
+      
+      // If there is no section assigned, return accordingly
+      if (!section_id) {
+        return res.status(200).json({ message: 'No section assigned', section_id: null, section_name: null });
+      }
+  
+      // Retrieve the section name from the sections table using the section_id
+      const sectionQuery = 'SELECT name FROM sections WHERE id = $1';
+      const sectionResult = await client.query(sectionQuery, [section_id]);
+      if (sectionResult.rowCount === 0) {
+        return res.status(404).json({ message: 'Section not found for the given section_id' });
+      }
+  
+      const section_name = sectionResult.rows[0].name;
+  
+      res.status(200).json({ section_id, section_name });
+    } catch (error) {
+      console.error("Error fetching section:", error);
+      res.status(500).json({ message: 'Internal server error', error: error.message });
+    } finally {
+      client.release();
+    }
+  };
+  

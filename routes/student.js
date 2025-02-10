@@ -9,8 +9,14 @@ const {
     updateStudentBankDetails,
     getAllStudents,
     getFullStudentDetails,
+    getRollNumber,
+    updateRollNumber,
+    updateClass,
+    getSection,
+    updateSection,
     
 } = require("../controllers/studentController");
+const { getClasses } = require("../controllers/classController");
 
 // Route to create a student (requires authentication)
 router.post("/create", authenticate, createStudent);
@@ -31,4 +37,16 @@ router.get("/:id", authenticate, getFullStudentDetails);
 
 router.get("/", authenticate, getAllStudents);
 
+router.get("/roll-number", authenticate , getRollNumber);
+router.put("/roll-number/update", authenticate , updateRollNumber);
+
+router.get("/class",authenticate , getClasses);
+router.put("/class/update", authenticate , updateClass);
+
+router.get("/section", authenticate , getSection);
+router.put("/section/update", authenticate , updateSection);
+
+
+
 module.exports = router;
+
