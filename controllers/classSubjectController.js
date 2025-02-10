@@ -1,3 +1,6 @@
+const db = require("../config/db"); // Ensure correct path
+
+
 exports.createClassSubjects = async (req, res) => {
     try {
         const { class_id, subjects } = req.body; // ✅ Extract class_id & subjects from request body
