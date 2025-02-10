@@ -531,6 +531,7 @@ exports.getAllEnrolledStudents = async (req, res) => {
         return res.status(400).json({ message: "Invalid school_code" });
       }
   
+      // Aggregate additional subjects into a JSON array.
       const query = `
         SELECT 
           s.student_id,
@@ -540,16 +541,25 @@ exports.getAllEnrolledStudents = async (req, res) => {
           se.roll_number,
           c.name AS class_name,
           se.class_id,
-          sas.subject_id,
-          sub.name AS additional_subject_name,
-          sub.code AS additional_subject_code
+          COALESCE(
+            json_agg(
+              DISTINCT jsonb_build_object(
+                'subject_id', sub.id,
+                'name', sub.name,
+                'code', sub.code
+              )
+            ) FILTER (WHERE sub.id IS NOT NULL),
+            '[]'
+          ) AS additional_subjects
         FROM student_enrollments se
         JOIN students s ON se.student_id = s.student_id
         JOIN classes c ON se.class_id = c.id
         LEFT JOIN student_additional_subjects sas ON s.student_id = sas.student_id
         LEFT JOIN subjects sub ON sas.subject_id = sub.id
         WHERE s.school_code = $1
+        GROUP BY s.student_id, s.first_name, s.last_name, s.status, se.roll_number, c.name, se.class_id
       `;
+  
       console.log("Executing Query:", query, "With school_code:", school_code);
       const result = await client.query(query, [school_code]);
       res.status(200).json({ students: result.rows });
