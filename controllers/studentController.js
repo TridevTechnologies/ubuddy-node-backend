@@ -522,4 +522,42 @@ exports.getRollNumber = async (req, res) => {
       client.release();
     }
   };
-  
+  exports.getAllEnrolledStudents = async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { school_code } = req.user;
+
+        // Ensure the school_code exists
+        if (!school_code) {
+            return res.status(400).json({ message: "Invalid school_code" });
+        }
+
+        // Your query to fetch student details
+        const query = `
+            SELECT 
+                s.student_id,
+                s.first_name,
+                s.last_name,
+                s.status,
+                se.roll_number,
+                c.name AS class_name
+            FROM student_enrollments se
+            JOIN students s ON se.student_id = s.student_id
+            JOIN classes c ON se.class_id = c.id
+            WHERE s.school_code = $1
+        `;
+
+        console.log("Executing Query:", query, "With school_code:", school_code);
+
+        // Execute the query with school_code as parameter
+        const result = await client.query(query, [school_code]);
+
+        // Return the result
+        res.status(200).json({ students: result.rows });
+    } catch (error) {
+        console.error("Error fetching student enrollment details:", error);
+        res.status(500).json({ message: "Internal server error", error: error.message });
+    } finally {
+        client.release(); // Ensure client release
+    }
+};

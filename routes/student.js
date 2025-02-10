@@ -14,13 +14,16 @@ const {
     updateClass,
     getSection,
     updateSection,
+    getAllEnrolledStudents,
     
 } = require("../controllers/studentController");
+
+
 const { getClasses } = require("../controllers/classController");
 
 // Route to create a student (requires authentication)
 router.post("/create", authenticate, createStudent);
-
+router.get("/enrollment-details",authenticate,getAllEnrolledStudents);
 // Route to update the status of a student (requires authentication)
 router.patch("/:id/status", authenticate, updateStudentStatus);
 
