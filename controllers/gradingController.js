@@ -1,4 +1,4 @@
-const db = require("../config/db");
+const pool = require("../config/db");
 
 // controllers/gradingController.js
 exports.createOrUpdateGradingScale = async (req, res) => {
