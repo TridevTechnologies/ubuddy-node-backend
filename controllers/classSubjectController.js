@@ -1,7 +1,7 @@
 const db = require("../config/db"); // Ensure correct path
 
 
-eexports.createClassSubjects = async (req, res) => {
+exports.createClassSubjects = async (req, res) => {
     try {
       const { class_id, subjects } = req.body;
       // Expect subjects to be an array of objects with keys:
