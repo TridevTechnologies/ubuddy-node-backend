@@ -1,3 +1,5 @@
+const pool = require("../config/db");
+
 exports.createOrUpdateGradingScale = async (req, res) => {
   const client = await pool.connect();
   try {
