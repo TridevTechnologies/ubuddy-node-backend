@@ -523,6 +523,7 @@ exports.getRollNumber = async (req, res) => {
     }
   };
 // controllers/studentController.js
+// controllers/studentController.js
 exports.getAllEnrolledStudents = async (req, res) => {
     const client = await pool.connect();
     try {
@@ -531,9 +532,9 @@ exports.getAllEnrolledStudents = async (req, res) => {
         return res.status(400).json({ message: "Invalid school_code" });
       }
   
-      // Aggregate additional subjects into a JSON array.
       const query = `
         SELECT 
+          se.enrollment_id,
           s.student_id,
           s.first_name,
           s.last_name,
@@ -554,12 +555,11 @@ exports.getAllEnrolledStudents = async (req, res) => {
         FROM student_enrollments se
         JOIN students s ON se.student_id = s.student_id
         JOIN classes c ON se.class_id = c.id
-        LEFT JOIN student_additional_subjects sas ON s.student_id = sas.student_id
+        LEFT JOIN student_additional_subjects sas ON se.enrollment_id = sas.enrollment_id
         LEFT JOIN subjects sub ON sas.subject_id = sub.id
         WHERE s.school_code = $1
-        GROUP BY s.student_id, s.first_name, s.last_name, s.status, se.roll_number, c.name, se.class_id
+        GROUP BY se.enrollment_id, s.student_id, s.first_name, s.last_name, s.status, se.roll_number, c.name, se.class_id
       `;
-  
       console.log("Executing Query:", query, "With school_code:", school_code);
       const result = await client.query(query, [school_code]);
       res.status(200).json({ students: result.rows });
@@ -597,62 +597,64 @@ exports.getNonCompulsorySubjects = async (req, res) => {
     }
   };
 
-  // controllers/studentController.js (or a separate file for additional subject functions)
-exports.assignAdditionalSubject = async (req, res) => {
-    const client = await pool.connect();
-    try {
-      const { student_id, class_id, subject_id } = req.body;
-      if (!student_id || !class_id || !subject_id) {
-        return res.status(400).json({ message: "student_id, class_id, and subject_id are required" });
-      }
-      
-      // Check if the student already has an additional subject assigned
-      const checkQuery = `
-      SELECT * FROM student_additional_subjects
-      WHERE student_id = $1 AND subject_id = $2
-    `;
-      const checkResult = await client.query(checkQuery, [student_id, subject_id]);
-      if (checkResult.rowCount > 0) {
-        return res.status(400).json({ message: "Additional subject already assigned. Unassign it before assigning a new one." });
-      }
-      
-      const insertQuery = `
-        INSERT INTO student_additional_subjects (student_id, class_id, subject_id)
-        VALUES ($1, $2, $3)
-        RETURNING id
-      `;
-      const insertResult = await client.query(insertQuery, [student_id, class_id, subject_id]);
-      res.status(201).json({ message: "Additional subject assigned", id: insertResult.rows[0].id });
-    } catch (error) {
-      console.error("Error assigning additional subject:", error);
-      res.status(500).json({ message: "Internal server error", error: error.message });
-    } finally {
-      client.release();
-    }
-  };
-  
   exports.unassignAdditionalSubject = async (req, res) => {
     const client = await pool.connect();
     try {
-      // You can pass the student_id either via the URL (as a parameter) or in the body.
-      // Here we assume it's in the request body.
-      const { student_id } = req.body;
-      if (!student_id) {
-        return res.status(400).json({ message: "student_id is required" });
+      const { enrollment_id, subject_id } = req.body;
+      if (!enrollment_id || !subject_id) {
+        return res.status(400).json({ message: "enrollment_id and subject_id are required" });
       }
       
       const deleteQuery = `
         DELETE FROM student_additional_subjects
-        WHERE student_id = $1
+        WHERE enrollment_id = $1 AND subject_id = $2
       `;
-      const deleteResult = await client.query(deleteQuery, [student_id]);
+      const deleteResult = await client.query(deleteQuery, [enrollment_id, subject_id]);
       if (deleteResult.rowCount === 0) {
-        return res.status(404).json({ message: "No additional subject assigned for this student" });
+        return res.status(404).json({ message: "No such additional subject assigned for this enrollment" });
       }
       
       res.status(200).json({ message: "Additional subject unassigned" });
     } catch (error) {
       console.error("Error unassigning additional subject:", error);
+      res.status(500).json({ message: "Internal server error", error: error.message });
+    } finally {
+      client.release();
+    }
+  };
+
+  exports.assignAdditionalSubject = async (req, res) => {
+    const client = await pool.connect();
+    try {
+      const { enrollment_id, class_id, subject_id } = req.body;
+      console.log("assignAdditionalSubject called with:", { enrollment_id, class_id, subject_id });
+      if (!enrollment_id || !class_id || !subject_id) {
+        return res.status(400).json({ 
+          message: "enrollment_id, class_id, and subject_id are required",
+          received: { enrollment_id, class_id, subject_id }
+        });
+      }
+      
+      const checkQuery = `
+        SELECT * FROM student_additional_subjects
+        WHERE enrollment_id = $1 AND subject_id = $2
+      `;
+      console.log("Running checkQuery with:", [enrollment_id, subject_id]);
+      const checkResult = await client.query(checkQuery, [enrollment_id, subject_id]);
+      if (checkResult.rowCount > 0) {
+        return res.status(400).json({ message: "Subject already assigned to this enrollment" });
+      }
+      
+      const insertQuery = `
+        INSERT INTO student_additional_subjects (enrollment_id, class_id, subject_id)
+        VALUES ($1, $2, $3)
+        RETURNING id
+      `;
+      console.log("Running insertQuery with:", [enrollment_id, class_id, subject_id]);
+      const insertResult = await client.query(insertQuery, [enrollment_id, class_id, subject_id]);
+      res.status(201).json({ message: "Additional subject assigned", id: insertResult.rows[0].id });
+    } catch (error) {
+      console.error("Error assigning additional subject:", error);
       res.status(500).json({ message: "Internal server error", error: error.message });
     } finally {
       client.release();
