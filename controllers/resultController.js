@@ -60,13 +60,11 @@ exports.submitResults = async (req, res) => {
     if (!enrollment_id || !exam_term_id || !subject_results) {
       return res.status(400).json({ message: "Missing required fields" });
     }
-
-    // Validate subject_results structure
     if (!Array.isArray(subject_results)) {
       return res.status(400).json({ message: "subject_results must be an array" });
     }
 
-    // Get enrollment details
+    // Get enrollment details from student_enrollments joined with students
     const enrollmentRes = await client.query(
       `SELECT se.class_id, se.session_id, s.school_code 
        FROM student_enrollments se
@@ -74,43 +72,50 @@ exports.submitResults = async (req, res) => {
        WHERE se.enrollment_id = $1`,
       [enrollment_id]
     );
-    
     if (enrollmentRes.rowCount === 0) {
       return res.status(404).json({ message: "Enrollment not found" });
     }
-    
     const { class_id, session_id, school_code: verified_school_code } = enrollmentRes.rows[0];
-    
-    // Validate school access
+
+    // Ensure the user has access to this enrollment
     if (verified_school_code !== school_code) {
       return res.status(403).json({ message: "Unauthorized access" });
     }
 
+    // Fetch the exam term weightage (the maximum marks allowed)
+    const termRes = await client.query(
+      'SELECT weightage FROM exam_terms WHERE id = $1',
+      [exam_term_id]
+    );
+    if (termRes.rowCount === 0) {
+      throw new Error('Invalid exam term');
+    }
+    const maxMarks = parseFloat(termRes.rows[0].weightage);
+
     await client.query('BEGIN');
 
+    // Loop through each subject result
     for (const subj of subject_results) {
       const { subject_id, marks, is_absent } = subj;
-      
-      // Ensure is_absent is always a boolean (default to false if not provided)
-      const isAbsent = !!is_absent;
+      const isAbsent = !!is_absent; // Ensure boolean value
 
-      // If absent, set marks to 0
-      const finalMarks = isAbsent ? 0 : parseFloat(marks) || 0;
-
-      // Get exam term weightage
-      const termRes = await client.query(
-        'SELECT weightage FROM exam_terms WHERE id = $1',
-        [exam_term_id]
-      );
-      
-      if (termRes.rowCount === 0) {
-        throw new Error('Invalid exam term');
+      let finalMarks;
+      if (isAbsent) {
+        // When absent, marks will always be 0
+        finalMarks = 0;
+      } else {
+        // When present, parse marks and ensure it does not exceed the exam term weightage
+        const parsedMarks = parseFloat(marks);
+        if (isNaN(parsedMarks)) {
+          throw new Error(`Invalid marks for subject ${subject_id}`);
+        }
+        if (parsedMarks > maxMarks) {
+          throw new Error(`Marks for subject ${subject_id} cannot exceed exam term weightage of ${maxMarks}`);
+        }
+        finalMarks = parsedMarks;
       }
-      
-      const maxMarks = termRes.rows[0].weightage;
-      const clampedMarks = Math.min(finalMarks, maxMarks);
 
-      // UPSERT query
+      // UPSERT: Insert new or update existing result record
       const upsertQuery = `
         INSERT INTO results (
           school_code, enrollment_id, session_id, class_id,
@@ -122,7 +127,6 @@ exports.submitResults = async (req, res) => {
           is_absent = EXCLUDED.is_absent,
           updated_at = NOW()
       `;
-      
       await client.query(upsertQuery, [
         school_code,
         enrollment_id,
@@ -130,14 +134,13 @@ exports.submitResults = async (req, res) => {
         class_id,
         exam_term_id,
         subject_id,
-        clampedMarks,
-        isAbsent // Ensure boolean value
+        finalMarks,
+        isAbsent
       ]);
     }
 
     await client.query('COMMIT');
     res.status(201).json({ message: "Results updated successfully" });
-    
   } catch (error) {
     await client.query('ROLLBACK');
     console.error("Result submission error:", error);
@@ -149,6 +152,7 @@ exports.submitResults = async (req, res) => {
     client.release();
   }
 };
+
 exports.getResult = async (req, res) => {
   const client = await pool.connect();
   try {
