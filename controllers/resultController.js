@@ -54,61 +54,94 @@ exports.submitResults = async (req, res) => {
   const client = await pool.connect();
   try {
     const { enrollment_id, exam_term_id, subject_results } = req.body;
-    const school_code = req.user.school_code; // Taken from JWT
-    if (!enrollment_id || !exam_term_id || !subject_results || !Array.isArray(subject_results)) {
-      return res.status(400).json({ 
-        message: "enrollment_id, exam_term_id, and subject_results (array) are required" 
-      });
+    const school_code = req.user.school_code;
+
+    // Validate input
+    if (!enrollment_id || !exam_term_id || !subject_results) {
+      return res.status(400).json({ message: "Missing required fields" });
     }
-    
-    // Fetch session_id and class_id from the enrollment record.
+
+    // Get enrollment details
     const enrollmentRes = await client.query(
-      "SELECT class_id, session_id FROM student_enrollments WHERE enrollment_id = $1",
+      `SELECT se.class_id, se.session_id, s.school_code 
+       FROM student_enrollments se
+       JOIN students s ON se.student_id = s.student_id
+       WHERE se.enrollment_id = $1`,
       [enrollment_id]
     );
+    
     if (enrollmentRes.rowCount === 0) {
       return res.status(404).json({ message: "Enrollment not found" });
     }
-    const { class_id, session_id } = enrollmentRes.rows[0];
     
+    const { class_id, session_id, school_code: verified_school_code } = enrollmentRes.rows[0];
+    
+    // Validate school access
+    if (verified_school_code !== school_code) {
+      return res.status(403).json({ message: "Unauthorized access" });
+    }
+
     await client.query('BEGIN');
-    
-    // Loop through each subject result and perform an UPSERT.
+
     for (const subj of subject_results) {
-      const { subject_id, marks_obtained, present } = subj;
-      // If absent, marks are automatically 0.
-      const marks = present ? marks_obtained : 0;
+      const { subject_id, marks, is_absent } = subj;
       
+      // Validate marks format
+      const sanitizedMarks = parseFloat(marks) || 0;
+      const finalMarks = is_absent ? 0 : Math.min(sanitizedMarks, 100);
+
+      // Get exam term weightage
+      const termRes = await client.query(
+        'SELECT weightage FROM exam_terms WHERE id = $1',
+        [exam_term_id]
+      );
+      
+      if (termRes.rowCount === 0) {
+        throw new Error('Invalid exam term');
+      }
+      
+      const maxMarks = termRes.rows[0].weightage;
+      const clampedMarks = Math.min(finalMarks, maxMarks);
+
+      // UPSERT query
       const upsertQuery = `
-        INSERT INTO results (school_code, enrollment_id, session_id, class_id, exam_term_id, subject_id, marks, is_absent)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        ON CONFLICT (school_code, enrollment_id, session_id, class_id, subject_id, exam_term_id)
-        DO UPDATE SET marks = EXCLUDED.marks, is_absent = EXCLUDED.is_absent, updated_at = CURRENT_TIMESTAMP
-        RETURNING id
+        INSERT INTO results (
+          school_code, enrollment_id, session_id, class_id,
+          exam_term_id, subject_id, marks, is_absent
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (enrollment_id, exam_term_id, subject_id)
+        DO UPDATE SET
+          marks = EXCLUDED.marks,
+          is_absent = EXCLUDED.is_absent,
+          updated_at = NOW()
       `;
+      
       await client.query(upsertQuery, [
-        school_code, 
-        enrollment_id, 
-        session_id, 
-        class_id, 
-        exam_term_id, 
-        subject_id, 
-        marks, 
-        present
+        school_code,
+        enrollment_id,
+        session_id,
+        class_id,
+        exam_term_id,
+        subject_id,
+        clampedMarks,
+        is_absent
       ]);
     }
-    
+
     await client.query('COMMIT');
-    res.status(201).json({ message: "Results submitted successfully" });
+    res.status(201).json({ message: "Results updated successfully" });
+    
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error("Error submitting results:", error);
-    res.status(500).json({ message: "Internal server error", error: error.message });
+    console.error("Result submission error:", error);
+    res.status(500).json({ 
+      message: error.message || "Internal server error",
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   } finally {
     client.release();
   }
 };
-
 // controllers/resultController.js
 exports.getResult = async (req, res) => {
   const client = await pool.connect();
