@@ -49,18 +49,20 @@ exports.getSubjectsForResultEntry = async (req, res) => {
 };
 
 // controllers/resultController.js
+const pool = require("../config/db");
+
 exports.submitResults = async (req, res) => {
   const client = await pool.connect();
   try {
     const { enrollment_id, exam_term_id, subject_results } = req.body;
-    const school_code = req.user.school_code;
+    const school_code = req.user.school_code; // Taken from JWT
     if (!enrollment_id || !exam_term_id || !subject_results || !Array.isArray(subject_results)) {
       return res.status(400).json({ 
         message: "enrollment_id, exam_term_id, and subject_results (array) are required" 
       });
     }
     
-    // Fetch session_id and class_id from the enrollment record
+    // Fetch session_id and class_id from the enrollment record.
     const enrollmentRes = await client.query(
       "SELECT class_id, session_id FROM student_enrollments WHERE enrollment_id = $1",
       [enrollment_id]
@@ -72,7 +74,7 @@ exports.submitResults = async (req, res) => {
     
     await client.query('BEGIN');
     
-    // Loop through each subject result and perform an UPSERT
+    // Loop through each subject result and perform an UPSERT.
     for (const subj of subject_results) {
       const { subject_id, marks_obtained, present } = subj;
       // If absent, marks are automatically 0.
@@ -85,7 +87,16 @@ exports.submitResults = async (req, res) => {
         DO UPDATE SET marks = EXCLUDED.marks, is_absent = EXCLUDED.is_absent, updated_at = CURRENT_TIMESTAMP
         RETURNING id
       `;
-      await client.query(upsertQuery, [school_code, enrollment_id, session_id, class_id, exam_term_id, subject_id, marks, present]);
+      await client.query(upsertQuery, [
+        school_code, 
+        enrollment_id, 
+        session_id, 
+        class_id, 
+        exam_term_id, 
+        subject_id, 
+        marks, 
+        present
+      ]);
     }
     
     await client.query('COMMIT');
@@ -98,6 +109,7 @@ exports.submitResults = async (req, res) => {
     client.release();
   }
 };
+
 // controllers/resultController.js
 exports.getResult = async (req, res) => {
   const client = await pool.connect();
