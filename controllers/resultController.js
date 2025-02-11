@@ -48,8 +48,7 @@ exports.getSubjectsForResultEntry = async (req, res) => {
   }
 };
 
-// controllers/resultController.js
-const pool = require("../config/db");
+
 
 exports.submitResults = async (req, res) => {
   const client = await pool.connect();
