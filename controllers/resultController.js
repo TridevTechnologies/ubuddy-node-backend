@@ -47,6 +47,7 @@ exports.getSubjectsForResultEntry = async (req, res) => {
     client.release();
   }
 };
+
 // controllers/resultController.js
 exports.submitResults = async (req, res) => {
   const client = await pool.connect();
@@ -54,26 +55,37 @@ exports.submitResults = async (req, res) => {
     const { enrollment_id, exam_term_id, subject_results } = req.body;
     const school_code = req.user.school_code;
     if (!enrollment_id || !exam_term_id || !subject_results || !Array.isArray(subject_results)) {
-      return res.status(400).json({ message: "enrollment_id, exam_term_id, and subject_results (array) are required" });
+      return res.status(400).json({ 
+        message: "enrollment_id, exam_term_id, and subject_results (array) are required" 
+      });
     }
+    
+    // Fetch session_id and class_id from the enrollment record
+    const enrollmentRes = await client.query(
+      "SELECT class_id, session_id FROM student_enrollments WHERE enrollment_id = $1",
+      [enrollment_id]
+    );
+    if (enrollmentRes.rowCount === 0) {
+      return res.status(404).json({ message: "Enrollment not found" });
+    }
+    const { class_id, session_id } = enrollmentRes.rows[0];
     
     await client.query('BEGIN');
     
-    // Loop through each subject result
+    // Loop through each subject result and perform an UPSERT
     for (const subj of subject_results) {
       const { subject_id, marks_obtained, present } = subj;
       // If absent, marks are automatically 0.
       const marks = present ? marks_obtained : 0;
       
-      // Use an UPSERT: if a row exists (for this school, enrollment, subject, exam term), update it; else, insert a new one.
       const upsertQuery = `
-        INSERT INTO results (school_code, enrollment_id, exam_term_id, subject_id, marks, is_absent)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (school_code, enrollment_id, subject_id, exam_term_id)
+        INSERT INTO results (school_code, enrollment_id, session_id, class_id, exam_term_id, subject_id, marks, is_absent)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (school_code, enrollment_id, session_id, class_id, subject_id, exam_term_id)
         DO UPDATE SET marks = EXCLUDED.marks, is_absent = EXCLUDED.is_absent, updated_at = CURRENT_TIMESTAMP
         RETURNING id
       `;
-      await client.query(upsertQuery, [school_code, enrollment_id, exam_term_id, subject_id, marks, present]);
+      await client.query(upsertQuery, [school_code, enrollment_id, session_id, class_id, exam_term_id, subject_id, marks, present]);
     }
     
     await client.query('COMMIT');
@@ -86,17 +98,13 @@ exports.submitResults = async (req, res) => {
     client.release();
   }
 };
-
-const pool = require("../config/db");
-
+// controllers/resultController.js
 exports.getResult = async (req, res) => {
   const client = await pool.connect();
   try {
     const { enrollment_id, exam_term_id } = req.query;
     if (!enrollment_id || !exam_term_id) {
-      return res
-        .status(400)
-        .json({ message: "enrollment_id and exam_term_id are required" });
+      return res.status(400).json({ message: "enrollment_id and exam_term_id are required" });
     }
     
     // Fetch result rows for this enrollment and exam term.
@@ -116,9 +124,9 @@ exports.getResult = async (req, res) => {
     const totalPossible = result.rows.length * 100;
     const percentage = totalPossible > 0 ? (totalMarks / totalPossible) * 100 : 0;
     
-    // Get school_code and session_id from the enrollment record.
+    // Get school_code, session_id, and class_id from the enrollment record.
     const schoolQuery = `
-      SELECT s.school_code, se.session_id
+      SELECT s.school_code, se.session_id, se.class_id
       FROM student_enrollments se
       JOIN students s ON se.student_id = s.student_id
       WHERE se.enrollment_id = $1
@@ -128,7 +136,7 @@ exports.getResult = async (req, res) => {
     if (schoolRes.rowCount === 0) {
       return res.status(404).json({ message: "Enrollment not found" });
     }
-    const { school_code, session_id } = schoolRes.rows[0];
+    const { school_code, session_id, class_id } = schoolRes.rows[0];
     
     // Use grading_scales to determine grade.
     const gradingQuery = `
@@ -146,7 +154,9 @@ exports.getResult = async (req, res) => {
       totalMarks,
       totalPossible,
       percentage,
-      grade
+      grade,
+      class_id,
+      session_id
     });
   } catch (error) {
     console.error("Error fetching result:", error);
@@ -155,7 +165,7 @@ exports.getResult = async (req, res) => {
     client.release();
   }
 };
-
+// controllers/resultController.js
 exports.deleteResult = async (req, res) => {
   const client = await pool.connect();
   try {
