@@ -3,7 +3,7 @@ const db = require("../config/db"); // Ensure correct path
 
 exports.createClassSubjects = async (req, res) => {
     const { class_id, subjects } = req.body;
-    const client = await pool.connect();
+    const client = await db.connect();
   
     try {
       await client.query('BEGIN');
