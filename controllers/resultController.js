@@ -1,3 +1,5 @@
+const db = require("../config/db");
+
 // controllers/resultController.js
 exports.getSubjectsForResultEntry = async (req, res) => {
   const client = await pool.connect();

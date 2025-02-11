@@ -1,3 +1,5 @@
+const db = require("../config/db");
+
 // controllers/gradingController.js
 exports.createOrUpdateGradingScale = async (req, res) => {
     const client = await pool.connect();
