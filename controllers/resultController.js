@@ -61,6 +61,11 @@ exports.submitResults = async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
+    // Validate subject_results structure
+    if (!Array.isArray(subject_results)) {
+      return res.status(400).json({ message: "subject_results must be an array" });
+    }
+
     // Get enrollment details
     const enrollmentRes = await client.query(
       `SELECT se.class_id, se.session_id, s.school_code 
@@ -86,9 +91,11 @@ exports.submitResults = async (req, res) => {
     for (const subj of subject_results) {
       const { subject_id, marks, is_absent } = subj;
       
-      // Validate marks format
-      const sanitizedMarks = parseFloat(marks) || 0;
-      const finalMarks = is_absent ? 0 : Math.min(sanitizedMarks, 100);
+      // Ensure is_absent is always a boolean (default to false if not provided)
+      const isAbsent = !!is_absent;
+
+      // If absent, set marks to 0
+      const finalMarks = isAbsent ? 0 : parseFloat(marks) || 0;
 
       // Get exam term weightage
       const termRes = await client.query(
@@ -124,7 +131,7 @@ exports.submitResults = async (req, res) => {
         exam_term_id,
         subject_id,
         clampedMarks,
-        is_absent
+        isAbsent // Ensure boolean value
       ]);
     }
 
@@ -142,7 +149,6 @@ exports.submitResults = async (req, res) => {
     client.release();
   }
 };
-// controllers/resultController.js
 exports.getResult = async (req, res) => {
   const client = await pool.connect();
   try {
