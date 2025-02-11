@@ -17,6 +17,8 @@ const schoolRoutes = require('./routes/school'); // Create school and get all sc
 const studentRoutes = require('./routes/student'); // Student-related routes
 const subjectRoutes = require('./routes/subjects'); // Create subjects for a school
 const sessionRoutes = require('./routes/sessions');
+const resultRoutes = require('./routes/resultRoutes');
+const gradingRoutes = require('./routes/gradingRoutes');
 
 
 // Mount routes with base paths
@@ -27,6 +29,8 @@ app.use('/api/school', schoolRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/subject', subjectRoutes);
 app.use('/api/sessions', sessionRoutes);
+app.use('/api/results', resultRoutes);
+app.use('/api/grading', gradingRoutes);
 // 404 Handler for unknown routes
 app.use((req, res, next) => {
   res.status(404).json({ message: 'Route not found' });
