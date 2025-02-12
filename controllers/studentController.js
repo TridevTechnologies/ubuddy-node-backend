@@ -541,14 +541,13 @@ exports.getRollNumber = async (req, res) => {
       client.release();
     }
   };
-// controllers/studentController.js
-// controllers/studentController.js
-exports.getAllEnrolledStudents = async (req, res) => {
+
+  exports.getAllEnrolledStudents = async (req, res) => {
     const client = await pool.connect();
     try {
-      const { school_code } = req.user;
-      if (!school_code) {
-        return res.status(400).json({ message: "Invalid school_code" });
+      const { school_code, session_id } = req.body; // Get session_id from the request body
+      if (!school_code || !session_id) {
+        return res.status(400).json({ message: "Invalid school_code or session_id" });
       }
   
       const query = `
@@ -577,10 +576,11 @@ exports.getAllEnrolledStudents = async (req, res) => {
         LEFT JOIN student_additional_subjects sas ON se.enrollment_id = sas.enrollment_id
         LEFT JOIN subjects sub ON sas.subject_id = sub.id
         WHERE s.school_code = $1
+          AND se.session_id = $2
         GROUP BY se.enrollment_id, s.student_id, s.first_name, s.last_name, s.status, se.roll_number, c.name, se.class_id
       `;
-      console.log("Executing Query:", query, "With school_code:", school_code);
-      const result = await client.query(query, [school_code]);
+      console.log("Executing Query:", query, "With school_code:", school_code, "and session_id:", session_id);
+      const result = await client.query(query, [school_code, session_id]); // Pass session_id in the query
       res.status(200).json({ students: result.rows });
     } catch (error) {
       console.error("Error fetching student enrollment details:", error);
