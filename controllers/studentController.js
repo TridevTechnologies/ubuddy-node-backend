@@ -545,7 +545,8 @@ exports.getRollNumber = async (req, res) => {
   exports.getAllEnrolledStudents = async (req, res) => {
     const client = await pool.connect();
     try {
-      const { school_code, session_id } = req.body; // Get session_id from the request body
+      school_code = req.user.school_code;
+      const { session_id } = req.body; // Get session_id from the request body
       if (!school_code || !session_id) {
         return res.status(400).json({ message: "Invalid school_code or session_id" });
       }
