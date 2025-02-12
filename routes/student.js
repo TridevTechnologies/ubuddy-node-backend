@@ -33,7 +33,7 @@ router.get("/non-compulsory-subjects", authenticate, getNonCompulsorySubjects);
 
 // Dynamic Routes (Place these after static ones)
 router.post("/create", authenticate, createStudent);
-router.get("/enrollment-details", authenticate, getAllEnrolledStudents);
+router.post("/enrollment-details", authenticate, getAllEnrolledStudents);
 
 // Route to update the status of a student (requires authentication)
 router.patch("/:id/status", authenticate, updateStudentStatus);
