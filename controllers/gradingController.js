@@ -91,7 +91,7 @@ exports.createExamTerm = async (req, res) => {
         theory_marks,
         component_1_label,
         component_2_label,
-        marks_scheme  // new field
+        marks_scheme  
       } = req.body;
       const school_code = req.user.school_code; // Extract from JWT
 
@@ -124,7 +124,7 @@ exports.createExamTerm = async (req, res) => {
         theory_marks,
         component_1_label,
         component_2_label,
-        schemea
+        scheme
       ]);
       res.status(201).json({ message: "Exam term created", exam_term_id: result.rows[0].id });
   } catch (error) {
