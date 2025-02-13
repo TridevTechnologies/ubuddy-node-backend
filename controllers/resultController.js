@@ -186,80 +186,29 @@ exports.getResult = async (req, res) => {
   const client = await pool.connect();
   try {
     const { enrollment_id, exam_term_id } = req.query;
+    
     if (!enrollment_id || !exam_term_id) {
       return res.status(400).json({ message: "enrollment_id and exam_term_id are required" });
     }
-    
-    // Fetch result rows for this enrollment and exam term.
+
+    // Fetch only relevant marks data
     const query = `
-      SELECT r.subject_id, r.theory_marks, r.practical_marks, r.total_marks, r.is_absent, s.name, s.code
+      SELECT r.subject_id, r.theory_marks, r.practical_marks, r.total_marks, r.is_absent, 
+             s.name AS subject_name, s.code AS subject_code
       FROM results r
       JOIN subjects s ON r.subject_id = s.id
       WHERE r.enrollment_id = $1 AND r.exam_term_id = $2
     `;
     const result = await client.query(query, [enrollment_id, exam_term_id]);
-    
-    // Sum up the total obtained marks from the results.
-    let totalObtained = 0;
-    result.rows.forEach(row => {
-      totalObtained += parseFloat(row.total_marks);
-    });
-    
-    // Fetch exam term details to determine maximum possible marks per subject.
-    const termRes = await client.query(
-      `SELECT marks_scheme, theory_marks AS max_theory, practical_marks AS max_practical 
-       FROM exam_terms 
-       WHERE id = $1`,
-      [exam_term_id]
-    );
-    if (termRes.rowCount === 0) {
-      return res.status(404).json({ message: "Exam term not found" });
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "No results found for the given enrollment and exam term." });
     }
-    const { marks_scheme, max_theory, max_practical } = termRes.rows[0];
-    
-    // Calculate total possible marks based on the marks scheme.
-    let totalPossible = 0;
-    if (marks_scheme === 'single') {
-      totalPossible = result.rows.length * max_theory;
-    } else if (marks_scheme === 'dual') {
-      totalPossible = result.rows.length * (max_theory + max_practical);
-    }
-    const percentage = totalPossible > 0 ? (totalObtained / totalPossible) * 100 : 0;
-    
-    // Get enrollment details (for school_code, session_id, class_id)
-    const schoolQuery = `
-      SELECT s.school_code, se.session_id, se.class_id
-      FROM student_enrollments se
-      JOIN students s ON se.student_id = s.student_id
-      WHERE se.enrollment_id = $1
-      LIMIT 1
-    `;
-    const schoolRes = await client.query(schoolQuery, [enrollment_id]);
-    if (schoolRes.rowCount === 0) {
-      return res.status(404).json({ message: "Enrollment not found" });
-    }
-    const { school_code, session_id: sess, class_id } = schoolRes.rows[0];
-    
-    // Use grading_scales to determine grade.
-    const gradingQuery = `
-      SELECT grade FROM grading_scales
-      WHERE school_code = $1
-        AND session_id = $2
-        AND min_marks <= $3 AND max_marks >= $3
-      LIMIT 1
-    `;
-    const gradingRes = await client.query(gradingQuery, [school_code, sess, percentage]);
-    const grade = gradingRes.rowCount > 0 ? gradingRes.rows[0].grade : "N/A";
-    
+
     res.status(200).json({
-      results: result.rows,
-      totalObtained,
-      totalPossible,
-      percentage,
-      grade,
-      class_id,
-      session_id: sess
+      results: result.rows, // Send only marks-related data
     });
+
   } catch (error) {
     console.error("Error fetching result:", error);
     res.status(500).json({ message: "Internal server error", error: error.message });
@@ -267,6 +216,7 @@ exports.getResult = async (req, res) => {
     client.release();
   }
 };
+
 
 // Delete a result entry for a specific subject
 exports.deleteResult = async (req, res) => {
