@@ -35,6 +35,29 @@ exports.createOrUpdateGradingScale = async (req, res) => {
       client.release();
   }
 };
+exports.getGradingScales = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { session_id } = req.query;
+    const school_code = req.user.school_code;
+    if (!session_id) {
+      return res.status(400).json({ message: "Missing required field: session_id" });
+    }
+    const query = `
+      SELECT * 
+      FROM grading_scales 
+      WHERE school_code = $1 AND session_id = $2
+      ORDER BY min_marks ASC
+    `;
+    const result = await client.query(query, [school_code, session_id]);
+    res.status(200).json({ grading_scales: result.rows });
+  } catch (error) {
+    console.error("Error fetching grading scales:", error);
+    res.status(500).json({ message: "Internal server error", error: error.message });
+  } finally {
+    client.release();
+  }
+};
 exports.deleteGradingScale = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -101,7 +124,7 @@ exports.createExamTerm = async (req, res) => {
         theory_marks,
         component_1_label,
         component_2_label,
-        scheme
+        schemea
       ]);
       res.status(201).json({ message: "Exam term created", exam_term_id: result.rows[0].id });
   } catch (error) {
