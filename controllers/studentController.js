@@ -133,48 +133,139 @@ exports.updateStudentStatus = async (req, res) => {
 
 // Edit Student Details
 exports.editStudent = async (req, res) => {
-    const { student_id, ...fields } = req.body;
-    const { school_code } = req.user;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
 
+    // 1. Validate student_id and school_code
+    const { student_id } = req.body;
     if (!student_id) {
-        return res.status(400).json({ message: "Student ID is required in the request body" });
+      return res.status(400).json({ message: "Student ID is required" });
     }
 
-    const keys = Object.keys(fields);
-    if (keys.length === 0) {
-        return res.status(400).json({ message: "No fields to update" });
+    // Check that the student exists and belongs to the correct school
+    const checkStudentQuery = "SELECT school_code FROM students WHERE student_id = $1";
+    const studentResult = await client.query(checkStudentQuery, [student_id]);
+    if (studentResult.rows.length === 0) {
+      return res.status(404).json({ message: "Student not found" });
+    }
+    if (studentResult.rows[0].school_code !== req.user.school_code) {
+      return res.status(403).json({ message: "Unauthorized: You can only update your school's students" });
     }
 
-    try {
-        const checkStudentQuery = "SELECT school_code FROM students WHERE student_id = $1";
-        const student = await pool.query(checkStudentQuery, [student_id]);
+    // 2. Update the students table (Personal Details)
+    // List only the allowed personal fields
+    const personalFields = {
+      first_name: req.body.first_name,
+      middle_name: req.body.middle_name,
+      last_name: req.body.last_name,
+      date_of_birth: req.body.date_of_birth,
+      gender: req.body.gender,
+      aadhar_number: req.body.aadhar_number,
+      sssmid: req.body.sssmid,
+      family_sssmid: req.body.family_sssmid,
+      apaar_id: req.body.apaar_id,
+      pen: req.body.pen,
+      primary_contact: req.body.primary_contact,
+      current_address: req.body.current_address,
+      permanent_address: req.body.permanent_address
+    };
 
-        if (student.rows.length === 0) {
-            return res.status(404).json({ message: "Student not found" });
-        }
-
-        if (student.rows[0].school_code !== school_code) {
-            return res.status(403).json({ message: "Unauthorized: You can only update your school's students" });
-        }
-
-        const updateQuery = `
-            UPDATE students
-            SET ${keys.map((key, i) => `${key} = $${i + 1}`).join(", ")}
-            WHERE student_id = $${keys.length + 1}
-            RETURNING *`;
-
-        const values = [...Object.values(fields), student_id];
-
-        const result = await pool.query(updateQuery, values);
-        if (result.rowCount === 0) {
-            return res.status(404).json({ message: "Student not found" });
-        }
-
-        res.json({ message: "Student details updated successfully", student: result.rows[0] });
-    } catch (error) {
-        console.error("Error updating student details:", error);
-        res.status(500).json({ message: "Internal server error" });
+    // Build the update query dynamically for fields provided (non-undefined)
+    const personalKeys = Object.keys(personalFields).filter(key => personalFields[key] !== undefined);
+    if (personalKeys.length > 0) {
+      const updatePersonalQuery = `
+        UPDATE students
+        SET ${personalKeys.map((key, i) => `${key} = $${i + 1}`).join(", ")}
+        WHERE student_id = $${personalKeys.length + 1}
+      `;
+      const personalValues = [...personalKeys.map(key => personalFields[key]), student_id];
+      await client.query(updatePersonalQuery, personalValues);
     }
+
+    // 3. Update the student_enrollments table (Enrollment Details)
+    // Allowed enrollment fields:
+    const enrollmentFields = {
+      session_id: req.body.session_id,
+      class_id: req.body.class_id,
+      section_id: req.body.section_id,
+      roll_number: req.body.roll_number,
+      admission_type: req.body.admission_type,
+      admission_date: req.body.admission_date,
+      previous_class: req.body.previous_class,
+      previous_school: req.body.previous_school
+    };
+
+    const enrollmentKeys = Object.keys(enrollmentFields).filter(key => enrollmentFields[key] !== undefined);
+    if (enrollmentKeys.length > 0) {
+      const updateEnrollmentQuery = `
+        UPDATE student_enrollments
+        SET ${enrollmentKeys.map((key, i) => `${key} = $${i + 1}`).join(", ")}
+        WHERE student_id = $${enrollmentKeys.length + 1}
+      `;
+      const enrollmentValues = [...enrollmentKeys.map(key => enrollmentFields[key]), student_id];
+      const enrollmentResult = await client.query(updateEnrollmentQuery, enrollmentValues);
+
+      // If no enrollment record was updated, insert one.
+      if (enrollmentResult.rowCount === 0) {
+        const insertEnrollmentQuery = `
+          INSERT INTO student_enrollments (student_id, ${enrollmentKeys.join(", ")})
+          VALUES ($1, ${enrollmentKeys.map((_, i) => "$" + (i + 2)).join(", ")})
+        `;
+        const insertValues = [student_id, ...enrollmentKeys.map(key => enrollmentFields[key])];
+        await client.query(insertEnrollmentQuery, insertValues);
+      }
+    }
+
+    // 4. Update Family Details
+    // For simplicity, we delete all existing family details and then insert the new ones.
+    if (Array.isArray(req.body.family_details)) {
+      await client.query(`DELETE FROM family_details WHERE student_id = $1`, [student_id]);
+
+      for (const family of req.body.family_details) {
+        const familyQuery = `
+          INSERT INTO family_details (student_id, relation, name, aadhar_number, occupation, annual_income)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `;
+        await client.query(familyQuery, [
+          student_id,
+          family.relation,
+          family.name,
+          family.aadhar_number,
+          family.occupation,
+          family.annual_income
+        ]);
+      }
+    }
+
+    // 5. Update Bank Details
+    // If bank_details is provided, update if a record exists; otherwise, insert.
+    if (req.body.bank_details) {
+      const { account_holder, account_number, ifsc_code } = req.body.bank_details;
+      const updateBankQuery = `
+        UPDATE bank_details
+        SET account_holder = $1, account_number = $2, ifsc_code = $3
+        WHERE student_id = $4
+      `;
+      const bankResult = await client.query(updateBankQuery, [account_holder, account_number, ifsc_code, student_id]);
+      if (bankResult.rowCount === 0) {
+        const insertBankQuery = `
+          INSERT INTO bank_details (student_id, account_holder, account_number, ifsc_code)
+          VALUES ($1, $2, $3, $4)
+        `;
+        await client.query(insertBankQuery, [student_id, account_holder, account_number, ifsc_code]);
+      }
+    }
+
+    await client.query("COMMIT");
+    res.json({ message: "Student details updated successfully" });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Error updating student details:", error);
+    res.status(500).json({ message: "Internal server error", error: error.message });
+  } finally {
+    client.release();
+  }
 };
 
 // Update Student Enrollment
