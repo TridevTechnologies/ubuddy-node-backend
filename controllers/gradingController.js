@@ -35,56 +35,6 @@ exports.createOrUpdateGradingScale = async (req, res) => {
       client.release();
   }
 };
-
-exports.createExamTerm = async (req, res) => {
-  const client = await pool.connect();
-  try {
-      const { session_id, term_name, weightage } = req.body;
-      const school_code = req.user.school_code; // Extract from JWT
-
-      if (!session_id || !term_name || weightage == null) {
-          return res.status(400).json({ message: "Missing required fields" });
-      }
-
-      const insertQuery = `
-          INSERT INTO exam_terms (school_code, session_id, term_name, weightage)
-          VALUES ($1, $2, $3, $4)
-          RETURNING id
-      `;
-
-      const result = await client.query(insertQuery, [school_code, session_id, term_name, weightage]);
-      res.status(201).json({ message: "Exam term created", exam_term_id: result.rows[0].id });
-  } catch (error) {
-      res.status(500).json({ message: "Internal server error", error: error.message });
-  } finally {
-      client.release();
-  }
-};
-// controllers/gradingController.js
-exports.getGradingScales = async (req, res) => {
-  const client = await pool.connect();
-  try {
-    const { session_id } = req.query;
-    const school_code = req.user.school_code;
-    if (!session_id) {
-      return res.status(400).json({ message: "Missing required field: session_id" });
-    }
-    const query = `
-      SELECT * 
-      FROM grading_scales 
-      WHERE school_code = $1 AND session_id = $2
-      ORDER BY min_marks ASC
-    `;
-    const result = await client.query(query, [school_code, session_id]);
-    res.status(200).json({ grading_scales: result.rows });
-  } catch (error) {
-    console.error("Error fetching grading scales:", error);
-    res.status(500).json({ message: "Internal server error", error: error.message });
-  } finally {
-    client.release();
-  }
-};
-
 exports.deleteGradingScale = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -106,21 +56,76 @@ exports.deleteGradingScale = async (req, res) => {
     client.release();
   }
 };
+
+exports.createExamTerm = async (req, res) => {
+  const client = await pool.connect();
+  try {
+      const {
+        session_id,
+        term_name,
+        class_id,
+        practical_marks,
+        theory_marks,
+        component_1_label,
+        component_2_label,
+        marks_scheme  // new field
+      } = req.body;
+      const school_code = req.user.school_code; // Extract from JWT
+
+      if (!session_id || !term_name || !class_id) {
+          return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // Validate marks_scheme: only allow 'single' or 'dual'
+      const allowedSchemes = ['single', 'dual'];
+      // Default to 'single' if not provided
+      const scheme = marks_scheme ? marks_scheme.toLowerCase() : 'single';
+      if (!allowedSchemes.includes(scheme)) {
+          return res.status(400).json({ message: "Invalid marks_scheme. Allowed values are 'single' or 'dual'." });
+      }
+
+      const insertQuery = `
+          INSERT INTO exam_terms 
+            (school_code, session_id, term_name, class_id, practical_marks, theory_marks, component_1_label, component_2_label, marks_scheme)
+          VALUES 
+            ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          RETURNING id
+      `;
+
+      const result = await client.query(insertQuery, [
+        school_code,
+        session_id,
+        term_name,
+        class_id,
+        practical_marks,
+        theory_marks,
+        component_1_label,
+        component_2_label,
+        scheme
+      ]);
+      res.status(201).json({ message: "Exam term created", exam_term_id: result.rows[0].id });
+  } catch (error) {
+      res.status(500).json({ message: "Internal server error", error: error.message });
+  } finally {
+      client.release();
+  }
+};
+
 exports.getExamTerms = async (req, res) => {
   const client = await pool.connect();
   try {
-    const { session_id } = req.query;
+    const { session_id, class_id } = req.query;
     const school_code = req.user.school_code;
-    if (!session_id) {
-      return res.status(400).json({ message: "Missing required field: session_id" });
+    if (!session_id || !class_id) {
+      return res.status(400).json({ message: "Missing required fields: session_id and class_id" });
     }
     const query = `
       SELECT * 
       FROM exam_terms 
-      WHERE school_code = $1 AND session_id = $2
+      WHERE school_code = $1 AND session_id = $2 AND class_id = $3
       ORDER BY id ASC
     `;
-    const result = await client.query(query, [school_code, session_id]);
+    const result = await client.query(query, [school_code, session_id, class_id]);
     res.status(200).json({ exam_terms: result.rows });
   } catch (error) {
     console.error("Error fetching exam terms:", error);
@@ -129,6 +134,7 @@ exports.getExamTerms = async (req, res) => {
     client.release();
   }
 };
+
 exports.deleteExamTerm = async (req, res) => {
   const client = await pool.connect();
   try {

@@ -1,6 +1,6 @@
 const pool = require("../config/db");
 
-// controllers/resultController.js
+// Fetch subjects for result entry (unchanged if still using subject list logic)
 exports.getSubjectsForResultEntry = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -28,7 +28,6 @@ exports.getSubjectsForResultEntry = async (req, res) => {
     const compulsoryRes = await client.query(compulsoryQuery, [class_id]);
 
     // Get additional subjects for the enrollment.
-    // Join with class_subjects to ensure they are result subjects.
     const additionalQuery = `
       SELECT s.id AS subject_id, s.name, s.code, false AS compulsory
       FROM student_additional_subjects sas
@@ -48,8 +47,6 @@ exports.getSubjectsForResultEntry = async (req, res) => {
   }
 };
 
-
-
 exports.submitResults = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -64,7 +61,7 @@ exports.submitResults = async (req, res) => {
       return res.status(400).json({ message: "subject_results must be an array" });
     }
 
-    // Get enrollment details from student_enrollments joined with students
+    // Get enrollment details
     const enrollmentRes = await client.query(
       `SELECT se.class_id, se.session_id, s.school_code 
        FROM student_enrollments se
@@ -76,54 +73,88 @@ exports.submitResults = async (req, res) => {
       return res.status(404).json({ message: "Enrollment not found" });
     }
     const { class_id, session_id, school_code: verified_school_code } = enrollmentRes.rows[0];
-
-    // Ensure the user has access to this enrollment
     if (verified_school_code !== school_code) {
       return res.status(403).json({ message: "Unauthorized access" });
     }
 
-    // Fetch the exam term weightage (the maximum marks allowed)
+    // Get exam term details: marks_scheme, max_theory, max_practical
     const termRes = await client.query(
-      'SELECT weightage FROM exam_terms WHERE id = $1',
+      `SELECT marks_scheme, theory_marks AS max_theory, practical_marks AS max_practical 
+       FROM exam_terms 
+       WHERE id = $1`,
       [exam_term_id]
     );
     if (termRes.rowCount === 0) {
-      throw new Error('Invalid exam term');
+      return res.status(404).json({ message: "Exam term not found" });
     }
-    const maxMarks = parseFloat(termRes.rows[0].weightage);
+    const { marks_scheme, max_theory, max_practical } = termRes.rows[0];
 
     await client.query('BEGIN');
 
     // Loop through each subject result
     for (const subj of subject_results) {
-      const { subject_id, marks, is_absent } = subj;
-      const isAbsent = !!is_absent; // Ensure boolean value
+      const { subject_id, theory_marks, practical_marks, is_absent } = subj;
+      const absent = !!is_absent; // Ensure boolean value
 
-      let finalMarks;
-      if (isAbsent) {
-        // When absent, marks will always be 0
-        finalMarks = 0;
+      let finalTheory = 0, finalPractical = null, finalTotal = 0;
+
+      if (absent) {
+        // When absent, all marks are set to 0
+        finalTheory = 0;
+        finalPractical = marks_scheme === 'dual' ? 0 : null;
+        finalTotal = 0;
       } else {
-        // When present, parse marks and ensure it does not exceed the exam term weightage
-        const parsedMarks = parseFloat(marks);
-        if (isNaN(parsedMarks)) {
-          throw new Error(`Invalid marks for subject ${subject_id}`);
+        if (marks_scheme === 'single') {
+          if (theory_marks === undefined || theory_marks === null) {
+            throw new Error(`Theory marks are required for subject ${subject_id} in single scheme`);
+          }
+          const parsedTheory = parseFloat(theory_marks);
+          if (isNaN(parsedTheory)) {
+            throw new Error(`Invalid theory marks for subject ${subject_id}`);
+          }
+          if (parsedTheory > max_theory) {
+            throw new Error(`Theory marks for subject ${subject_id} cannot exceed maximum of ${max_theory}`);
+          }
+          finalTheory = parsedTheory;
+          finalPractical = null;
+          finalTotal = parsedTheory;
+        } else if (marks_scheme === 'dual') {
+          if (
+            theory_marks === undefined || theory_marks === null ||
+            practical_marks === undefined || practical_marks === null
+          ) {
+            throw new Error(`Both theory and practical marks are required for subject ${subject_id} in dual scheme`);
+          }
+          const parsedTheory = parseFloat(theory_marks);
+          const parsedPractical = parseFloat(practical_marks);
+          if (isNaN(parsedTheory) || isNaN(parsedPractical)) {
+            throw new Error(`Invalid marks for subject ${subject_id}`);
+          }
+          if (parsedTheory > max_theory) {
+            throw new Error(`Theory marks for subject ${subject_id} cannot exceed maximum of ${max_theory}`);
+          }
+          if (parsedPractical > max_practical) {
+            throw new Error(`Practical marks for subject ${subject_id} cannot exceed maximum of ${max_practical}`);
+          }
+          finalTheory = parsedTheory;
+          finalPractical = parsedPractical;
+          finalTotal = parsedTheory + parsedPractical;
+        } else {
+          throw new Error("Invalid marks scheme in exam term");
         }
-        if (parsedMarks > maxMarks) {
-          throw new Error(`Marks for subject ${subject_id} cannot exceed exam term weightage of ${maxMarks}`);
-        }
-        finalMarks = parsedMarks;
       }
 
-      // UPSERT: Insert new or update existing result record
+      // UPSERT into results table with new columns
       const upsertQuery = `
         INSERT INTO results (
           school_code, enrollment_id, session_id, class_id,
-          exam_term_id, subject_id, marks, is_absent
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          exam_term_id, subject_id, theory_marks, practical_marks, total_marks, is_absent
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT (enrollment_id, exam_term_id, subject_id)
         DO UPDATE SET
-          marks = EXCLUDED.marks,
+          theory_marks = EXCLUDED.theory_marks,
+          practical_marks = EXCLUDED.practical_marks,
+          total_marks = EXCLUDED.total_marks,
           is_absent = EXCLUDED.is_absent,
           updated_at = NOW()
       `;
@@ -134,8 +165,10 @@ exports.submitResults = async (req, res) => {
         class_id,
         exam_term_id,
         subject_id,
-        finalMarks,
-        isAbsent
+        finalTheory,
+        finalPractical,
+        finalTotal,
+        absent
       ]);
     }
 
@@ -144,10 +177,7 @@ exports.submitResults = async (req, res) => {
   } catch (error) {
     await client.query('ROLLBACK');
     console.error("Result submission error:", error);
-    res.status(500).json({ 
-      message: error.message || "Internal server error",
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    res.status(500).json({ message: error.message || "Internal server error" });
   } finally {
     client.release();
   }
@@ -163,22 +193,41 @@ exports.getResult = async (req, res) => {
     
     // Fetch result rows for this enrollment and exam term.
     const query = `
-      SELECT r.subject_id, r.marks, r.is_absent, s.name, s.code
+      SELECT r.subject_id, r.theory_marks, r.practical_marks, r.total_marks, r.is_absent, s.name, s.code
       FROM results r
       JOIN subjects s ON r.subject_id = s.id
       WHERE r.enrollment_id = $1 AND r.exam_term_id = $2
     `;
     const result = await client.query(query, [enrollment_id, exam_term_id]);
     
-    let totalMarks = 0;
+    // Sum up the total obtained marks from the results.
+    let totalObtained = 0;
     result.rows.forEach(row => {
-      totalMarks += parseFloat(row.marks);
+      totalObtained += parseFloat(row.total_marks);
     });
-    // Assume each subject is out of 100 marks.
-    const totalPossible = result.rows.length * 100;
-    const percentage = totalPossible > 0 ? (totalMarks / totalPossible) * 100 : 0;
     
-    // Get school_code, session_id, and class_id from the enrollment record.
+    // Fetch exam term details to determine maximum possible marks per subject.
+    const termRes = await client.query(
+      `SELECT marks_scheme, theory_marks AS max_theory, practical_marks AS max_practical 
+       FROM exam_terms 
+       WHERE id = $1`,
+      [exam_term_id]
+    );
+    if (termRes.rowCount === 0) {
+      return res.status(404).json({ message: "Exam term not found" });
+    }
+    const { marks_scheme, max_theory, max_practical } = termRes.rows[0];
+    
+    // Calculate total possible marks based on the marks scheme.
+    let totalPossible = 0;
+    if (marks_scheme === 'single') {
+      totalPossible = result.rows.length * max_theory;
+    } else if (marks_scheme === 'dual') {
+      totalPossible = result.rows.length * (max_theory + max_practical);
+    }
+    const percentage = totalPossible > 0 ? (totalObtained / totalPossible) * 100 : 0;
+    
+    // Get enrollment details (for school_code, session_id, class_id)
     const schoolQuery = `
       SELECT s.school_code, se.session_id, se.class_id
       FROM student_enrollments se
@@ -190,7 +239,7 @@ exports.getResult = async (req, res) => {
     if (schoolRes.rowCount === 0) {
       return res.status(404).json({ message: "Enrollment not found" });
     }
-    const { school_code, session_id, class_id } = schoolRes.rows[0];
+    const { school_code, session_id: sess, class_id } = schoolRes.rows[0];
     
     // Use grading_scales to determine grade.
     const gradingQuery = `
@@ -200,17 +249,17 @@ exports.getResult = async (req, res) => {
         AND min_marks <= $3 AND max_marks >= $3
       LIMIT 1
     `;
-    const gradingRes = await client.query(gradingQuery, [school_code, session_id, percentage]);
+    const gradingRes = await client.query(gradingQuery, [school_code, sess, percentage]);
     const grade = gradingRes.rowCount > 0 ? gradingRes.rows[0].grade : "N/A";
     
     res.status(200).json({
       results: result.rows,
-      totalMarks,
+      totalObtained,
       totalPossible,
       percentage,
       grade,
       class_id,
-      session_id
+      session_id: sess
     });
   } catch (error) {
     console.error("Error fetching result:", error);
@@ -219,7 +268,7 @@ exports.getResult = async (req, res) => {
     client.release();
   }
 };
-// controllers/resultController.js
+
 exports.deleteResult = async (req, res) => {
   const client = await pool.connect();
   try {
