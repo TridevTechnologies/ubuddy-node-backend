@@ -1,6 +1,6 @@
 const pool = require("../config/db");
 
-// Fetch subjects for result entry (unchanged if still using subject list logic)
+// Fetch subjects for result entry (remains unchanged)
 exports.getSubjectsForResultEntry = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -47,6 +47,7 @@ exports.getSubjectsForResultEntry = async (req, res) => {
   }
 };
 
+// Submit results using new columns and marks_scheme logic
 exports.submitResults = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -105,10 +106,10 @@ exports.submitResults = async (req, res) => {
         finalTotal = 0;
       } else {
         if (marks_scheme === 'single') {
-          if (theory_marks === undefined || theory_marks === null) {
-            throw new Error(`Theory marks are required for subject ${subject_id} in single scheme`);
-          }
-          const parsedTheory = parseFloat(theory_marks);
+          // For single scheme, only theory marks (from component_1_label) is used.
+          // Default empty input to 0.
+          const inputTheory = (theory_marks === "" || theory_marks === undefined || theory_marks === null) ? 0 : theory_marks;
+          const parsedTheory = parseFloat(inputTheory);
           if (isNaN(parsedTheory)) {
             throw new Error(`Invalid theory marks for subject ${subject_id}`);
           }
@@ -119,14 +120,11 @@ exports.submitResults = async (req, res) => {
           finalPractical = null;
           finalTotal = parsedTheory;
         } else if (marks_scheme === 'dual') {
-          if (
-            theory_marks === undefined || theory_marks === null ||
-            practical_marks === undefined || practical_marks === null
-          ) {
-            throw new Error(`Both theory and practical marks are required for subject ${subject_id} in dual scheme`);
-          }
-          const parsedTheory = parseFloat(theory_marks);
-          const parsedPractical = parseFloat(practical_marks);
+          // For dual scheme, both theory and practical marks are required.
+          const inputTheory = (theory_marks === "" || theory_marks === undefined || theory_marks === null) ? 0 : theory_marks;
+          const inputPractical = (practical_marks === "" || practical_marks === undefined || practical_marks === null) ? 0 : practical_marks;
+          const parsedTheory = parseFloat(inputTheory);
+          const parsedPractical = parseFloat(inputPractical);
           if (isNaN(parsedTheory) || isNaN(parsedPractical)) {
             throw new Error(`Invalid marks for subject ${subject_id}`);
           }
@@ -144,7 +142,7 @@ exports.submitResults = async (req, res) => {
         }
       }
 
-      // UPSERT into results table with new columns
+      // UPSERT into results table with new columns (theory_marks, practical_marks, total_marks)
       const upsertQuery = `
         INSERT INTO results (
           school_code, enrollment_id, session_id, class_id,
@@ -183,6 +181,7 @@ exports.submitResults = async (req, res) => {
   }
 };
 
+// Get result details along with computed totals, percentage, and grade.
 exports.getResult = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -269,6 +268,7 @@ exports.getResult = async (req, res) => {
   }
 };
 
+// Delete a result entry for a specific subject
 exports.deleteResult = async (req, res) => {
   const client = await pool.connect();
   try {
